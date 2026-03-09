@@ -13,14 +13,14 @@ main(int argc, char *argv[])
   int N; //=?????
   Point<dim> x0; //=????
   double sigma; //=?????
-  const auto g  = []( const double  &t) {
+  const auto g  = [&]( const double  &t) {
     return (std::exp(-a * std::cos(2*N*M_PI*t)))/(std::exp(a));
   };
-  const auto h = []( const Point<dim> &p) {
-    return std::exp(-(std::pow(p-x0,2)/std::pow(sigma,2)));
-  }
+  const auto h = [&]( const Point<dim> &p) {
+    return std::exp(-((p-x0)*(p-x0)/std::pow(sigma,2)));
+  };
 
-  const auto f  = [](const Point<dim>  &p, const double  &t) {
+  const auto f  = [&](const Point<dim>  &p, const double  &t) {
     return g(t)*h(p);
   };
 
