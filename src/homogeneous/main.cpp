@@ -9,12 +9,12 @@ main(int argc, char *argv[])
   Utilities::MPI::MPI_InitFinalize mpi_init(argc, argv);
 
   const auto mu = [](const Point<dim> & /*p*/) { return 1.0; };
-  double a; //=?????
-  int N; //=?????
-  Point<dim> x0; //=????
-  double sigma; //=?????
+  double a = 1.5; 
+  int N = 3; 
+  Point<dim> x0(0, 0, 0); 
+  double sigma = 0.5; 
   const auto g  = [&]( const double  &t) {
-    return (std::exp(-a * std::cos(2*N*M_PI*t)))/(std::exp(a));
+    return (std::exp(-a * (std::cos(2*N*M_PI*t) + 1)));
   };
   const auto h = [&]( const Point<dim> &p) {
     return std::exp(-((p-x0)*(p-x0)/std::pow(sigma,2)));
@@ -24,11 +24,11 @@ main(int argc, char *argv[])
     return g(t)*h(p);
   };
 
-  Heat problem(/*mesh_filename = */ "../mesh/mesh-cube-10.msh",
+  Heat problem(/*mesh_filename = */ "../mesh/mesh-cube-20.msh",
                /* degree = */ 1,
                /* T = */ 1.0,
-               /* theta = */ 0.0,
-               /* delta_t = */ 0.0025,
+               /* theta = */ 0.5,
+               /* delta_t = */ 0.05,
                mu,
                f);
 

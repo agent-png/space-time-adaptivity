@@ -1,4 +1,0 @@
-/home/agent-png/C-Labs/space-time-adaptivity/build/CMakeFiles/H_Heat.dir
-/home/agent-png/C-Labs/space-time-adaptivity/build/CMakeFiles/STA_Heat.dir
-/home/agent-png/C-Labs/space-time-adaptivity/build/CMakeFiles/edit_cache.dir
-/home/agent-png/C-Labs/space-time-adaptivity/build/CMakeFiles/rebuild_cache.dir
