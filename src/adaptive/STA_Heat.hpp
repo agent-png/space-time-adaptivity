@@ -1,0 +1,154 @@
+#ifndef STA_HEAT
+#define STA_HEAT
+
+#include <deal.II/base/utilities.h>
+#include <deal.II/base/quadrature_lib.h>
+#include <deal.II/base/function.h>
+#include <deal.II/base/conditional_ostream.h> //
+
+#include <deal.II/lac/vector.h>
+#include <deal.II/lac/full_matrix.h>
+#include <deal.II/lac/dynamic_sparsity_pattern.h>
+#include <deal.II/lac/sparse_matrix.h>
+#include <deal.II/lac/solver_cg.h>
+#include <deal.II/lac/precondition.h>
+#include <deal.II/lac/affine_constraints.h>
+
+#include <deal.II/grid/tria.h>
+#include <deal.II/grid/grid_generator.h>
+#include <deal.II/grid/grid_refinement.h> //
+#include <deal.II/grid/grid_out.h>
+
+#include <deal.II/dofs/dof_handler.h>
+#include <deal.II/dofs/dof_tools.h>
+
+#include <deal.II/fe/fe_q.h>
+#include <deal.II/fe/fe_values.h>
+
+#include <deal.II/numerics/data_out.h>
+#include <deal.II/numerics/vector_tools.h>
+#include <deal.II/numerics/error_estimator.h> //
+#include <deal.II/numerics/solution_transfer.h>
+#include <deal.II/numerics/matrix_creator.h>
+#include <deal.II/numerics/matrix_tools.h>
+
+#include <fstream>
+#include <iostream>
+
+using namespace dealii;
+
+/**
+ * Class managing the Heat problem.
+ */ 
+class AdaptiveHeat
+{
+public:
+	// Physical dimension (1D, 2D, 3D)
+	static constexpr unsigned int dim = 3;
+
+	// Class Constructor
+	AdaptiveHeat(const std::string 																							 &mesh_file_name_,
+							 const unsigned int 																						 &r_,
+							 const double 		  																						 &T_,
+							 const double 		  																						 &theta_,
+							 const double 		  																						 &delta_t_,
+							 const std::function<double(const Point<dim> &)> 								 &mu_, // in this project 1.0
+							 const std::function<double(const Point<dim> &, const double &)> &f_)
+		: mesh_file_name(mesh_file_name_)
+		, r(r_)
+		, T(T_)
+		, theta(theta_)
+		, delta_t(delta_t_)
+		, mu(mu_)
+		, f(f_)
+		, mpi_size(Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD))
+		, mpi_rank(Utilities::MPI::this_mpi_process(MPI_COMM_WORLD))
+		, mesh(MPI_COMM_WORLD)
+		, pcout(std::cout, mpi_rank == 0)
+	{}
+
+	// Run the simulation for the Heat problem
+	void run();
+
+protected:
+	// Initialize the system
+	void setup();
+
+	// Assemble the system
+	void assemble();
+
+	// Solve the linear system
+	void solve();
+
+	// Apply adaptive mesh refinement
+	void refine_grid();
+
+	// Output
+	void output() const;
+
+	const std::string mesh_file_name;
+
+	// Polynomial degree
+	const unsigned int r;
+
+	// Final time
+	const double T;
+
+	// Theta parameter for theta method
+	const double theta;
+
+	// Timestep
+	const double delta_t;
+
+	// Current time
+	double time = 0.0;
+
+	// Current timestep number
+	unsigned int timestep_number = 0;
+
+	// Diffusion coefficient
+	std::function<double(const Point<dim> &)> mu;
+
+	// Forcing term
+	std::function<double(const Point<dim> &, const double &)> f;
+
+	// Number of MPI processes
+	const unsigned int mpi_size;
+
+	// Rank of the current MPI process
+	const unsigned int mpi_rank;
+
+	// Note: deal.II tutorial uses parallel::distributed::Triangulation.
+	// fullydistributed is newer and more scalable (does not replicate coarse mesh
+	// in all mpi processes).
+	// Triangulation
+	parallel::fullydistributed::Triangulation<dim> mesh;
+
+	// Finite element space
+	std::unique_ptr<FiniteElement<dim>> fe;
+
+	// Quadrature formula
+	std::unique_ptr<Quadrature<dim>> quadrature;
+
+	// DoF handler
+	DoFHandler<dim> dof_handler;
+
+	// System matrix
+	TrilinosWrappers::SparseMatrix system_matrix;
+
+	// System right-hand side
+	TrilinosWrappers::MPI::Vector system_rhs;
+
+	// WARN: deal.II tutorial 40 uses a different method (maybe?) to keep track of relevant DoFs
+	// keep this in mind in case deal.II way of doing is more suitable for our application
+	// System solution, no ghost elements
+	TrilinosWrappers::MPI::Vector solution_owned;
+
+	// System solution, with ghost elements
+	TrilinosWrappers::MPI::Vector solution;
+
+	// Output stream, only for process 0
+	ConditionalOStream pcout;
+};
+
+#endif
