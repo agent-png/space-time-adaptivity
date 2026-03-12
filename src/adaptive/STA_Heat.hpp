@@ -12,7 +12,7 @@
 #include <deal.II/lac/sparse_matrix.h>
 #include <deal.II/lac/solver_cg.h>
 #include <deal.II/lac/precondition.h>
-#include <deal.II/lac/affine_constraints.h>
+#include <deal.II/lac/affine_constraints.h> //
 
 #include <deal.II/grid/tria.h>
 #include <deal.II/grid/grid_generator.h>
@@ -120,9 +120,10 @@ protected:
 
 	// Note: deal.II tutorial uses parallel::distributed::Triangulation.
 	// fullydistributed is newer and more scalable (does not replicate coarse mesh
-	// in all mpi processes).
+	// in all mpi processes) however it is more difficult to implement Adaptive Mesh Refinement
+	// since parallel::distributed::Triangulation already supports many useful features.
 	// Triangulation
-	parallel::fullydistributed::Triangulation<dim> mesh;
+	parallel::distributed::Triangulation<dim> mesh;
 
 	// Finite element space
 	std::unique_ptr<FiniteElement<dim>> fe;
@@ -133,14 +134,15 @@ protected:
 	// DoF handler
 	DoFHandler<dim> dof_handler;
 
+	// Holds a list of constraints to hold the hanging nodes and the boundary conditions.
+	AffineConstraints<double> constraints;
+
 	// System matrix
 	TrilinosWrappers::SparseMatrix system_matrix;
 
 	// System right-hand side
 	TrilinosWrappers::MPI::Vector system_rhs;
 
-	// WARN: deal.II tutorial 40 uses a different method (maybe?) to keep track of relevant DoFs
-	// keep this in mind in case deal.II way of doing is more suitable for our application
 	// System solution, no ghost elements
 	TrilinosWrappers::MPI::Vector solution_owned;
 
