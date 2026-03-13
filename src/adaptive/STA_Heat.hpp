@@ -77,8 +77,8 @@ protected:
 	// Assemble the system
 	void assemble();
 
-	// Solve the linear system
-	void solve();
+	// Solve the time step linear system 
+	void solve_time_step();
 
 	// Apply adaptive mesh refinement
 	void refine_grid();
