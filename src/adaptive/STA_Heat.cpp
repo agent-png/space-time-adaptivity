@@ -8,8 +8,12 @@ void AdaptiveHeat::setup()
   {
     pcout << "Initializing the mesh" << std::endl;
 
-    // Read serial mesh.
-    Triangulation<dim> mesh_serial;
+    // Read serial mesh. Initialize it to allow mesh smoothing
+    Triangulation<dim> mesh_serial(Triangulation<dim>::MeshSmoothing(
+                                      Triangulation<dim>::smoothing_on_refinement |
+                                      Triangulation<dim>::smoothing_on_coarsening
+                                    )
+                                  );
 
     {
       GridIn<dim> grid_in;
@@ -17,11 +21,6 @@ void AdaptiveHeat::setup()
 
       std::ifstream mesh_file(mesh_file_name);
       grid_in.read_msh(mesh_file);
-      Triangulation<dim> mesh_serial(Triangulation<dim>::MeshSmoothing(
-                                      Triangulation<dim>::smoothing_on_refinement |
-                                      Triangulation<dim>::smoothing_on_coarsening
-                                    )
-                                  );
     }
     
     // Copy the serial mesh into the parallel one.
@@ -78,7 +77,7 @@ void AdaptiveHeat::setup()
 
 
     constraints.clear();
-    constraints.reinit(locally_owned_dofs, locally_relevant_dofs);
+    constraints.reinit(locally_relevant_dofs);
     DoFTools::make_hanging_node_constraints(dof_handler, constraints);
     constraints.close();
 
@@ -230,7 +229,7 @@ void AdaptiveHeat::refine_grid()
   
   KellyErrorEstimator<dim>::estimate(
     dof_handler,
-    QGauss<dim - 1>(fe.degree + 1),
+    QGauss<dim - 1>(fe->degree + 1),
     std::map<types::boundary_id, const Function<dim> *>(),
     solution,
     estimated_error_per_cell);
