@@ -259,10 +259,71 @@ void AdaptiveHeat::refine_grid()
 
 void AdaptiveHeat::output() const
 {
+  DataOut<dim> data_out;
+
+  data_out.add_data_vector(dof_handler, solution, "solution");
+
+  // Add vector for parallel partition.
+  std::vector<unsigned int> partition_int(mesh.n_active_cells());
+  GridTools::get_subdomain_association(mesh, partition_int);
+  const Vector<double> partitioning(partition_int.begin(), partition_int.end());
+  data_out.add_data_vector(partitioning, "partitioning");
+
+  data_out.build_patches();
+
+  const std::filesystem::path mesh_path(mesh_file_name);
+  const std::string output_file_name = "output-" + mesh_path.stem().string();
+
+  data_out.write_vtu_with_pvtu_record(/* folder = */ "./",
+                                      /* basename = */ output_file_name,
+                                      /* index = */ timestep_number,
+                                      MPI_COMM_WORLD);
+  pcout << "Output written to " << output_file_name << std::endl;
+  pcout << "===============================================" << std::endl;
+ 
 
 }
 
 void AdaptiveHeat::run()
 {
+  // Setup initial conditions.
+  {
+    setup();
+
+    VectorTools::interpolate(dof_handler, FunctionU0(), solution_owned);
+    solution = solution_owned;
+
+    time            = 0.0;
+    timestep_number = 0;
+
+    // Output initial condition.
+    output();
+  }
+
+  pcout << "===============================================" << std::endl;
+
+  // Time-stepping loop.
+  while (time < T - 0.5 * delta_t)
+    {
+      time += delta_t;
+      ++timestep_number;
+
+      pcout << "Timestep " << std::setw(3) << timestep_number
+            << ", time = " << std::setw(4) << std::fixed << std::setprecision(2)
+            << time << " : ";
+
+      assemble();
+      solve_linear_system();
+
+      // Perform parallel communication to update the ghost values of the
+      // solution vector.
+      solution = solution_owned;
+
+      output();
+      
+      if (timestep_number % 5 == 0)
+         refine_grid();
+      
+    }
 
 }
