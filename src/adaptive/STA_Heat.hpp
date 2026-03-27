@@ -25,6 +25,7 @@
 #include <deal.II/distributed/grid_refinement.h>
 #include <deal.II/grid/grid_out.h>
 #include <deal.II/grid/grid_in.h>
+#include <deal.II/distributed/solution_transfer.h>
 
 #include <deal.II/dofs/dof_handler.h>
 #include <deal.II/dofs/dof_tools.h>
@@ -41,6 +42,7 @@
 #include <deal.II/numerics/matrix_creator.h>
 #include <deal.II/numerics/matrix_tools.h>
 
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 
@@ -56,15 +58,13 @@ public:
 	static constexpr unsigned int dim = 3;
 
 	// Class Constructor
-	AdaptiveHeat(const std::string 																							 &mesh_file_name_,
-							 const unsigned int 																						 &r_,
+	AdaptiveHeat(const unsigned int 																						 &r_,
 							 const double 		  																						 &T_,
 							 const double 		  																						 &theta_,
 							 const double 		  																						 &delta_t_,
 							 const std::function<double(const Point<dim> &)> 								 &mu_, // in this project 1.0
 							 const std::function<double(const Point<dim> &, const double &)> &f_)
-		: mesh_file_name(mesh_file_name_)
-		, r(r_)
+		: r(r_)
 		, T(T_)
 		, theta(theta_)
 		, delta_t(delta_t_)
@@ -80,8 +80,11 @@ public:
 	void run();
 
 protected:
-	// Initialize the system
+	// Initialize the mesh and the FE space
 	void setup();
+
+	// Initialize the DoFs handler and the system
+	void setup_system();
 
 	// Assemble the system
 	void assemble();
@@ -94,8 +97,6 @@ protected:
 
 	// Output
 	void output() const;
-
-	const std::string mesh_file_name;
 
 	// Polynomial degree
 	const unsigned int r;
@@ -135,10 +136,10 @@ protected:
 	parallel::distributed::Triangulation<dim> mesh;
 
 	// Finite element space
-	std::unique_ptr<FiniteElement<dim>> fe;
+	std::unique_ptr<FE_Q<dim>> fe;
 
 	// Quadrature formula
-	std::unique_ptr<Quadrature<dim>> quadrature;
+	std::unique_ptr<QGauss<dim>> quadrature;
 
 	// DoF handler
 	DoFHandler<dim> dof_handler;

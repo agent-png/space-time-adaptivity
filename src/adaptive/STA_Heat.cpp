@@ -4,33 +4,13 @@ void AdaptiveHeat::setup()
 {
   pcout << "===============================================" << std::endl;
 
-  // Create the mesh
+  // Create the initial mesh
   {
     pcout << "Initializing the mesh" << std::endl;
 
-    // Read serial mesh. Initialize it to allow mesh smoothing
-    Triangulation<dim> mesh_serial(Triangulation<dim>::MeshSmoothing(
-                                      Triangulation<dim>::smoothing_on_refinement |
-                                      Triangulation<dim>::smoothing_on_coarsening
-                                    )
-                                  );
-
-    {
-      GridIn<dim> grid_in;
-      grid_in.attach_triangulation(mesh_serial);
-
-      std::ifstream mesh_file(mesh_file_name);
-      grid_in.read_msh(mesh_file);
-    }
-    
-    // Copy the serial mesh into the parallel one.
-    {
-      GridTools::partition_triangulation(mpi_size, mesh_serial);
-
-      const auto construction_data = TriangulationDescription::Utilities::
-        create_description_from_triangulation(mesh_serial, MPI_COMM_WORLD);
-      mesh.create_triangulation(construction_data);
-    }
+    GridGenerator::hyper_cube(mesh);
+    //refining level
+    mesh.refine_global(5);
 
     pcout << "  Number of elements = " << mesh.n_global_active_cells() << std::endl;
 
@@ -42,13 +22,13 @@ void AdaptiveHeat::setup()
   {
     pcout << "Initializing the finite element space" << std::endl;
 
-    fe = std::make_unique<FE_SimplexP<dim>>(r);
+    fe = std::make_unique<FE_Q<dim>>(r);
 
     pcout << "  Degree                     = " << fe->degree << std::endl;
     pcout << "  DoFs per cell              = " << fe->dofs_per_cell
           << std::endl;
 
-    quadrature = std::make_unique<QGaussSimplex<dim>>(r + 1);
+    quadrature = std::make_unique<QGauss<dim>>(r + 1);
 
     pcout << "  Quadrature points per cell = " << quadrature->size()
           << std::endl;
@@ -56,6 +36,10 @@ void AdaptiveHeat::setup()
 
   pcout << "-----------------------------------------------" << std::endl;
   
+  setup_system();
+}
+
+void AdaptiveHeat::setup_system(){
   // Initialize the DoF handler.
   {
     pcout << "Initializing the DoF handler" << std::endl;
@@ -196,8 +180,11 @@ void AdaptiveHeat::assemble()
 
       cell->get_dof_indices(dof_indices);
 
-      system_matrix.add(dof_indices, cell_matrix);
-      system_rhs.add(dof_indices, cell_rhs);
+      constraints.distribute_local_to_global(cell_matrix,
+                                       cell_rhs,
+                                       dof_indices,
+                                       system_matrix,
+                                       system_rhs);
     }
 
   system_matrix.compress(VectorOperation::add);
@@ -221,6 +208,7 @@ void AdaptiveHeat::solve_time_step()
 
   solver.solve(system_matrix, solution_owned, system_rhs, preconditioner);
   pcout << solver_control.last_step() << " CG iterations" << std::endl;
+  
 }
 
 void AdaptiveHeat::refine_grid()
@@ -253,7 +241,21 @@ void AdaptiveHeat::refine_grid()
     estimated_error_per_cell, 
     0.3, 
     0.03); 
+
+  parallel::distributed::SolutionTransfer<dim, TrilinosWrappers::MPI::Vector> solution_transfer(dof_handler);
+  solution_transfer.prepare_for_coarsening_and_refinement(solution_owned);
+
   mesh.execute_coarsening_and_refinement();
+
+  // Rebuild DoFs/matrix/vectors on new mesh
+  setup_system();
+
+  // Interpolate old solution onto the new DoF space
+  solution_transfer.interpolate(solution_owned);
+  constraints.distribute(solution_owned);
+
+  // Update ghosted vector
+  solution = solution_owned;
 
 }
 
@@ -271,8 +273,7 @@ void AdaptiveHeat::output() const
 
   data_out.build_patches();
 
-  const std::filesystem::path mesh_path(mesh_file_name);
-  const std::string output_file_name = "output-" + mesh_path.stem().string();
+  const std::string output_file_name = "output-mesh";
 
   data_out.write_vtu_with_pvtu_record(/* folder = */ "./",
                                       /* basename = */ output_file_name,
@@ -290,7 +291,7 @@ void AdaptiveHeat::run()
   {
     setup();
 
-    VectorTools::interpolate(dof_handler, FunctionU0(), solution_owned);
+    VectorTools::interpolate(dof_handler, Functions::ZeroFunction<dim>(), solution_owned);
     solution = solution_owned;
 
     time            = 0.0;
@@ -313,7 +314,7 @@ void AdaptiveHeat::run()
             << time << " : ";
 
       assemble();
-      solve_linear_system();
+      solve_time_step();
 
       // Perform parallel communication to update the ghost values of the
       // solution vector.
