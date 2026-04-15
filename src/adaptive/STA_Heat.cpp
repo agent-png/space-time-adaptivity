@@ -48,6 +48,7 @@ void AdaptiveHeat::setup_system(){
     dof_handler.distribute_dofs(*fe);
 
     pcout << "  Number of DoFs = " << dof_handler.n_dofs() << std::endl;
+    pcout << "  N_levels = " << mesh.n_levels() << std::endl;
   }
 
   pcout << "-----------------------------------------------" << std::endl;
@@ -221,6 +222,10 @@ void AdaptiveHeat::refine_grid()
     std::map<types::boundary_id, const Function<dim> *>(),
     solution,
     estimated_error_per_cell);
+  
+  pcout << "  Number of DoFs to refine = " << dof_handler.n_dofs()*0.25 << std::endl;
+  pcout << "  Number of DoFs to coarsen = " << dof_handler.n_dofs()*0.03 << std::endl;
+  pcout << "  Estimated error norm =  " << estimated_error_per_cell.l2_norm() << std::endl;
   /**
    * 0.3 and 0.03 values explaination (I think it can be useful)
    * There is an estimated error for each cell:
