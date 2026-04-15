@@ -322,8 +322,14 @@ void AdaptiveHeat::run()
 
       output();
       
-      if (timestep_number % 5 == 0)
-         refine_grid();
+      if (timestep_number % 5 == 0 && time < T - 0.5 * delta_t){
+        pcout << "-----------------------------------------------" << std::endl;
+        pcout << "Applying refinement" << std::endl;
+        refine_grid();
+        pcout << "-----------------------------------------------" << std::endl;
+        }
+        
+
       
     }
 
