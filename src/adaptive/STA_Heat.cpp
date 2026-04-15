@@ -217,7 +217,8 @@ void AdaptiveHeat::solve_time_step()
   
 }
 
-void AdaptiveHeat::refine_grid()
+void AdaptiveHeat::refine_grid(const unsigned int min_grid_level,
+                               const unsigned int max_grid_level)
 {
   Vector<float> estimated_error_per_cell(mesh.n_active_cells());
   
