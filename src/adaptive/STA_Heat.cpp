@@ -202,13 +202,18 @@ void AdaptiveHeat::solve_time_step()
 
   //ReductionControl is a more flexible SolverControl extension
   ReductionControl solver_control(/* maxiter = */ 10000,
-                                  /* tolerance = */ 1.0e-16,
+                                  /* tolerance = */ 1.0e-12,
                                   /* reduce = */ 1.0e-6);
 
   SolverCG<TrilinosWrappers::MPI::Vector> solver(solver_control);
 
+  solution_owned.reinit(dof_handler.locally_owned_dofs(), MPI_COMM_WORLD);
+
   solver.solve(system_matrix, solution_owned, system_rhs, preconditioner);
   pcout << solver_control.last_step() << " CG iterations" << std::endl;
+
+  // 
+  constraints.distribute(solution_owned);
   
 }
 
