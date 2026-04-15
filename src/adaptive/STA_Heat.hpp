@@ -93,7 +93,7 @@ protected:
 	void solve_time_step();
 
 	// Apply adaptive mesh refinement
-	void refine_grid();
+	void refine_grid(const unsigned int, const unsigned int);
 
 	// Output
 	void output() const;

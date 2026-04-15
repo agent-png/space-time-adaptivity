@@ -247,21 +247,38 @@ void AdaptiveHeat::refine_grid(const unsigned int min_grid_level,
    *   - if mesh oscillates (refine/coarsen flip-flop), reduce coarsen fraction.
    *   - if DoFs explode, reduce refine fraction and/or add max refinement level.
    */
-  parallel::distributed::GridRefinement::refine_and_coarsen_fixed_number(
+  parallel::distributed::GridRefinement::refine_and_coarsen_fixed_fraction(
     mesh, 
     estimated_error_per_cell, 
-    0.3, 
-    0.03); 
+    0.30,
+    0.03,
+    VectorTools::L1_norm); 
 
+  // Enforce max and min/max refinement levels
+  if (mesh.n_levels() > max_grid_level)
+    for (const auto &cell :
+         mesh.active_cell_iterators_on_level(max_grid_level))
+      cell->clear_refine_flag();
+
+  for (const auto &cell :
+       mesh.active_cell_iterators_on_level(min_grid_level))
+    cell->clear_coarsen_flag();
+  
+  // Prepare solution transfer
   parallel::distributed::SolutionTransfer<dim, TrilinosWrappers::MPI::Vector> solution_transfer(dof_handler);
-  solution_transfer.prepare_for_coarsening_and_refinement(solution_owned);
+  // previous_solution is the solution to transfer (tutorial-26)
+  TrilinosWrappers::MPI::Vector previous_solution(solution);
 
+  mesh.prepare_coarsening_and_refinement();
+  solution_transfer.prepare_for_coarsening_and_refinement(previous_solution);
+
+  // Execute refinement
   mesh.execute_coarsening_and_refinement();
 
   // Rebuild DoFs/matrix/vectors on new mesh
   setup_system();
 
-  // Interpolate old solution onto the new DoF space
+  // Interpolate old solution onto the new DoF space and apply hanging-node and Dirichlet constraints for continuity.
   solution_transfer.interpolate(solution_owned);
   constraints.distribute(solution_owned);
 
@@ -298,6 +315,7 @@ void AdaptiveHeat::output() const
 
 void AdaptiveHeat::run()
 {
+  const unsigned int initial_global_refinement = 6;
   // Setup initial conditions.
   {
     setup();
@@ -336,12 +354,9 @@ void AdaptiveHeat::run()
       if (timestep_number % 5 == 0 && time < T - 0.5 * delta_t){
         pcout << "-----------------------------------------------" << std::endl;
         pcout << "Applying refinement" << std::endl;
-        refine_grid();
+        refine_grid(initial_global_refinement, initial_global_refinement + 2);
         pcout << "-----------------------------------------------" << std::endl;
         }
-        
-
-      
     }
 
 }
