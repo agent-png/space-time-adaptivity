@@ -47,6 +47,25 @@ void AdaptiveHeat::setup_system(){
     dof_handler.reinit(mesh);
     dof_handler.distribute_dofs(*fe);
 
+    //Load balancing check
+    unsigned int local_dofs = dof_handler.locally_owned_dofs().n_elements();
+
+    //pcout << "-----------------------------------------------" << std::endl;
+    if (mpi_rank == 1 ) {
+    pcout << "Load balancing info:" << std::endl;
+    }
+
+
+    std::cout << "   Rank " << mpi_rank << " owns " << local_dofs << " DoFs" << std::endl;
+
+  
+    unsigned int min_dofs = Utilities::MPI::min(local_dofs, MPI_COMM_WORLD);
+    unsigned int max_dofs = Utilities::MPI::max(local_dofs, MPI_COMM_WORLD);
+
+    pcout << "   Min DoFs/Rank: " << min_dofs << std::endl;
+    pcout << "   Max DoFs/Rank: " << max_dofs << std::endl;
+    pcout << "   Imbalance ratio: " << static_cast<double>(max_dofs) / min_dofs << std::endl;
+
     pcout << "  Number of DoFs = " << dof_handler.n_dofs() << std::endl;
     pcout << "  N_levels = " << mesh.n_levels() << std::endl;
   }
@@ -220,7 +239,18 @@ void AdaptiveHeat::solve_time_step()
 void AdaptiveHeat::refine_grid(const unsigned int min_grid_level,
                                const unsigned int max_grid_level)
 {
+  // Update ghosted vector
+  solution = solution_owned;
+
+  // Diagnostics 1
+  pcout << "  DEBUG: Max solution before refinement: " << solution.max() << std::endl;
+
+  // Diagnostics 2
+  Point<dim> p_test(0,0,0);
+  pcout << "  DEBUG: f(0,t) at time  " << time << ": " << f(p_test, time) << std::endl;
+
   Vector<float> estimated_error_per_cell(mesh.n_active_cells());
+
   
   KellyErrorEstimator<dim>::estimate(
     dof_handler,
@@ -282,9 +312,6 @@ void AdaptiveHeat::refine_grid(const unsigned int min_grid_level,
   solution_transfer.interpolate(solution_owned);
   constraints.distribute(solution_owned);
 
-  // Update ghosted vector
-  solution = solution_owned;
-
 }
 
 void AdaptiveHeat::output() const
@@ -315,7 +342,7 @@ void AdaptiveHeat::output() const
 
 void AdaptiveHeat::run()
 {
-  const unsigned int initial_global_refinement = 6;
+  const unsigned int initial_global_refinement = 4;
   // Setup initial conditions.
   {
     setup();
