@@ -47,25 +47,6 @@ void AdaptiveHeat::setup_system(){
     dof_handler.reinit(mesh);
     dof_handler.distribute_dofs(*fe);
 
-    //Load balancing check
-    unsigned int local_dofs = dof_handler.locally_owned_dofs().n_elements();
-
-    //pcout << "-----------------------------------------------" << std::endl;
-    if (mpi_rank == 1 ) {
-    pcout << "Load balancing info:" << std::endl;
-    }
-
-
-    std::cout << "   Rank " << mpi_rank << " owns " << local_dofs << " DoFs" << std::endl;
-
-  
-    unsigned int min_dofs = Utilities::MPI::min(local_dofs, MPI_COMM_WORLD);
-    unsigned int max_dofs = Utilities::MPI::max(local_dofs, MPI_COMM_WORLD);
-
-    pcout << "   Min DoFs/Rank: " << min_dofs << std::endl;
-    pcout << "   Max DoFs/Rank: " << max_dofs << std::endl;
-    pcout << "   Imbalance ratio: " << static_cast<double>(max_dofs) / min_dofs << std::endl;
-
     pcout << "  Number of DoFs = " << dof_handler.n_dofs() << std::endl;
     pcout << "  N_levels = " << mesh.n_levels() << std::endl;
   }
@@ -239,18 +220,7 @@ void AdaptiveHeat::solve_time_step()
 void AdaptiveHeat::refine_grid(const unsigned int min_grid_level,
                                const unsigned int max_grid_level)
 {
-  // Update ghosted vector
-  solution = solution_owned;
-
-  // Diagnostics 1
-  pcout << "  DEBUG: Max solution before refinement: " << solution.max() << std::endl;
-
-  // Diagnostics 2
-  Point<dim> p_test(0,0,0);
-  pcout << "  DEBUG: f(0,t) at time  " << time << ": " << f(p_test, time) << std::endl;
-
   Vector<float> estimated_error_per_cell(mesh.n_active_cells());
-
   
   KellyErrorEstimator<dim>::estimate(
     dof_handler,
@@ -261,7 +231,7 @@ void AdaptiveHeat::refine_grid(const unsigned int min_grid_level,
   
   pcout << "  Number of DoFs to refine = " << dof_handler.n_dofs()*0.25 << std::endl;
   pcout << "  Number of DoFs to coarsen = " << dof_handler.n_dofs()*0.03 << std::endl;
-  pcout << "  Estimated error norm =  " << estimated_error_per_cell.l2_norm() << std::endl;
+  pcout << "  Estimated error norm =  " <<std::scientific << estimated_error_per_cell.l2_norm() << std::endl;
   /**
    * 0.3 and 0.03 values explaination (I think it can be useful)
    * There is an estimated error for each cell:
@@ -312,6 +282,9 @@ void AdaptiveHeat::refine_grid(const unsigned int min_grid_level,
   solution_transfer.interpolate(solution_owned);
   constraints.distribute(solution_owned);
 
+  // Update ghosted vector
+  solution = solution_owned;
+
 }
 
 void AdaptiveHeat::output() const
@@ -342,7 +315,11 @@ void AdaptiveHeat::output() const
 
 void AdaptiveHeat::run()
 {
-  const unsigned int initial_global_refinement = 4;
+  const unsigned int initial_global_refinement = 6;
+
+  //Checkpoint for rollback
+  TrilinosWrappers::MPI::Vector old_solution;
+
   // Setup initial conditions.
   {
     setup();
@@ -350,40 +327,86 @@ void AdaptiveHeat::run()
     VectorTools::interpolate(dof_handler, Functions::ZeroFunction<dim>(), solution_owned);
     solution = solution_owned;
 
-    time            = 0.0;
-    timestep_number = 0;
 
+    old_solution.reinit(solution_owned);
+  
+    time            = 0.00;
+    timestep_number = 1;
+    
     // Output initial condition.
     output();
   }
+
+  double tol=1e-2;
+  
+  std::cout<<"TOL = "<<tol<<std::endl;
 
   pcout << "===============================================" << std::endl;
 
   // Time-stepping loop.
   while (time < T - 0.5 * delta_t)
     {
-      time += delta_t;
-      ++timestep_number;
-
+      //Saving previous solution for error estimation
+      old_solution = solution_owned;
+      
       pcout << "Timestep " << std::setw(3) << timestep_number
             << ", time = " << std::setw(4) << std::fixed << std::setprecision(2)
             << time << " : ";
 
+      double t_old = time;
+      double  t_attempt = time + delta_t;
+      time = t_attempt; 
+
       assemble();
       solve_time_step();
+    
+      // Errore estimation
+      TrilinosWrappers::MPI::Vector diff = solution_owned;
+      diff.add(-1.0, old_solution); 
 
-      // Perform parallel communication to update the ghost values of the
-      // solution vector.
-      solution = solution_owned;
-
-      output();
+      double delta_U = diff.linfty_norm();
       
-      if (timestep_number % 5 == 0 && time < T - 0.5 * delta_t){
+      pcout << " | Time Var Max: " << std::scientific << delta_U 
+            << " | dt: " << delta_t << std::endl;
+
+      //Factor clamp
+     double factor = std::max(0.3, std::min(tol / delta_U, 2.0));
+      
+     // Adaptive Rollback
+        if (delta_U > tol) {
+            //Rejected step
+            pcout << "Exceeded Tolerance (" << delta_U << "), Reducing Timestep..." << std::endl;
+            time =t_old;
+            
+            delta_t = 0.9 * delta_t * factor;
+
+            solution_owned = old_solution; // Back to previous solution
+
+            continue;        
+        } 
+        else {
+            //Accepted step
+            time = t_attempt;
+            timestep_number++;
+            
+            delta_t = 0.9 * delta_t * factor;
+          
+            solution = solution_owned;
+
+            output();
+        }
+      
+      if (timestep_number % 25 == 0 && time < T - 0.5 * delta_t){
         pcout << "-----------------------------------------------" << std::endl;
         pcout << "Applying refinement" << std::endl;
         refine_grid(initial_global_refinement, initial_global_refinement + 2);
         pcout << "-----------------------------------------------" << std::endl;
-        }
+
+        old_solution.reinit(solution_owned);
+        old_solution = solution_owned;
+        //Safe choice to stabilize the first steps after refinement, can be improved by using the error estimation to choose a more appropriate value.
+        delta_t = 0.5 * delta_t;  
+       }
     }
 
 }
