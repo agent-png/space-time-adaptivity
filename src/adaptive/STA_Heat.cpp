@@ -333,11 +333,16 @@ void AdaptiveHeat::run()
     time            = 0.00;
     timestep_number = 1;
     
+
+
     // Output initial condition.
     output();
   }
 
   double tol=1e-2;
+  double dt_min = 1e-6;
+  double dt_max = 1e-1;
+    
   
   std::cout<<"TOL = "<<tol<<std::endl;
 
@@ -379,6 +384,8 @@ void AdaptiveHeat::run()
             time =t_old;
             
             delta_t = 0.9 * delta_t * factor;
+            //Delta_t clamp
+            delta_t = std::max(dt_min, std::min(delta_t, dt_max));
 
             solution_owned = old_solution; // Back to previous solution
 
@@ -390,7 +397,9 @@ void AdaptiveHeat::run()
             timestep_number++;
             
             delta_t = 0.9 * delta_t * factor;
-          
+            //Delta_t clamp
+            delta_t = std::max(dt_min, std::min(delta_t, dt_max));
+
             solution = solution_owned;
 
             output();
