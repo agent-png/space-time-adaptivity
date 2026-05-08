@@ -229,10 +229,39 @@ void AdaptiveHeat::refine_grid(const unsigned int min_grid_level,
     solution,
     estimated_error_per_cell);
   
+  double eta_norm = estimated_error_per_cell.l2_norm();
   pcout << "  Number of DoFs to refine = " << dof_handler.n_dofs()*0.25 << std::endl;
   pcout << "  Number of DoFs to coarsen = " << dof_handler.n_dofs()*0.03 << std::endl;
-  pcout << "  Estimated error norm =  " <<std::scientific << estimated_error_per_cell.l2_norm() << std::endl;
+  pcout << "  Estimated error norm =  " <<std::scientific << eta_norm << std::endl;
+  
+  if(eta_norm < spatial_tol){
+    /* do not refine the grid */
+    pcout << "  Spatial error " << eta_norm 
+          << " < tolerance " << spatial_tol 
+          << " -> skip refinement.\n";
+    return; 
+  }
+
+  /* changes to make refine and coarsen fraction dynamic */
+  const double error_ratio = eta_norm / spatial_tol; 
+
+  // how does it work
+  // If error_ratio = 2, error is 2x the tol → use higher refine_fraction
+  // if error_ratio = 1.1, error is a little higher than tol → use lower refine_fraction
+  const double refine_fraction  = std::clamp(0.10 * error_ratio, 0.05, 0.30); //refine_fraction = 0.10 * error_ratio, 0.05 is the min and 0.30 is the max
+  const double coarsen_fraction = std::clamp(0.01 / error_ratio, 0.005, 0.03);
+
+  parallel::distributed::GridRefinement::refine_and_coarsen_fixed_fraction(
+      mesh, 
+      estimated_error_per_cell, 
+      refine_fraction,
+      coarsen_fraction,
+      VectorTools::L1_norm);
+
+  last_refine_step = timestep_number;  // update last refinement 
+
   /**
+   * EXPLANATION parallel::distributed::GridRefinement::refine_and_coarsen_fixed_fraction fuction fields
    * 0.3 and 0.03 values explaination (I think it can be useful)
    * There is an estimated error for each cell:
    *  - error is high --> the cell needs more detail
@@ -247,12 +276,8 @@ void AdaptiveHeat::refine_grid(const unsigned int min_grid_level,
    *   - if mesh oscillates (refine/coarsen flip-flop), reduce coarsen fraction.
    *   - if DoFs explode, reduce refine fraction and/or add max refinement level.
    */
-  parallel::distributed::GridRefinement::refine_and_coarsen_fixed_fraction(
-    mesh, 
-    estimated_error_per_cell, 
-    0.30,
-    0.03,
-    VectorTools::L1_norm); 
+
+   
 
   // Enforce max and min/max refinement levels
   if (mesh.n_levels() > max_grid_level)
@@ -339,9 +364,15 @@ void AdaptiveHeat::run()
     output();
   }
 
+  // for time error
   double tol=1e-2;
   double dt_min = 1e-6;
   double dt_max = 1e-1;
+
+  // for spatial error 
+  double spatial_tol = 5e-3; // start point, we can refine 
+  int min_steps_between_refine = 5; // to not refine too often
+  int last_refine_step = 0; // when was the last refinement
     
   
   std::cout<<"TOL = "<<tol<<std::endl;
@@ -374,10 +405,12 @@ void AdaptiveHeat::run()
       pcout << " | Time Var Max: " << std::scientific << delta_U 
             << " | dt: " << delta_t << std::endl;
 
+      // danger for by 0 division
+      double denom = std::max(delta_U, 1e-14);
       //Factor clamp
-     double factor = std::max(0.3, std::min(tol / delta_U, 2.0));
+      double factor = std::max(0.3, std::min(tol / denom, 2.0));
       
-     // Adaptive Rollback
+      // Adaptive Rollback
         if (delta_U > tol) {
             //Rejected step
             pcout << "Exceeded Tolerance (" << delta_U << "), Reducing Timestep..." << std::endl;
@@ -405,17 +438,17 @@ void AdaptiveHeat::run()
             output();
         }
       
-      if (timestep_number % 25 == 0 && time < T - 0.5 * delta_t){
+      if (time < (T - (0.5 * delta_t)) && (timestep_number - last_refine_step) >= min_steps_between_refine)
+      {
         pcout << "-----------------------------------------------" << std::endl;
-        pcout << "Applying refinement" << std::endl;
+        pcout << "Applying spatial error-driven refinement" << std::endl;
         refine_grid(initial_global_refinement, initial_global_refinement + 2);
         pcout << "-----------------------------------------------" << std::endl;
 
         old_solution.reinit(solution_owned);
         old_solution = solution_owned;
-        //Safe choice to stabilize the first steps after refinement, can be improved by using the error estimation to choose a more appropriate value.
-        delta_t = 0.5 * delta_t;  
-       }
+        delta_t = 0.5 * delta_t;
+      }
     }
 
 }
