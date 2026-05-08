@@ -217,7 +217,7 @@ void AdaptiveHeat::solve_time_step()
   
 }
 
-void AdaptiveHeat::refine_grid(const unsigned int min_grid_level,
+bool AdaptiveHeat::refine_grid(const unsigned int min_grid_level,
                                const unsigned int max_grid_level)
 {
   Vector<float> estimated_error_per_cell(mesh.n_active_cells());
@@ -239,8 +239,8 @@ void AdaptiveHeat::refine_grid(const unsigned int min_grid_level,
     pcout << "  Spatial error " << eta_norm 
           << " < tolerance " << spatial_tol 
           << " -> skip refinement.\n";
-    return; 
-  }
+    return false; 
+  } 
 
   /* changes to make refine and coarsen fraction dynamic */
   const double error_ratio = eta_norm / spatial_tol; 
@@ -257,9 +257,6 @@ void AdaptiveHeat::refine_grid(const unsigned int min_grid_level,
       refine_fraction,
       coarsen_fraction,
       VectorTools::L1_norm);
-
-  last_refine_step = timestep_number;  // update last refinement 
-
   /**
    * EXPLANATION parallel::distributed::GridRefinement::refine_and_coarsen_fixed_fraction fuction fields
    * 0.3 and 0.03 values explaination (I think it can be useful)
@@ -280,14 +277,16 @@ void AdaptiveHeat::refine_grid(const unsigned int min_grid_level,
    
 
   // Enforce max and min/max refinement levels
-  if (mesh.n_levels() > max_grid_level)
-    for (const auto &cell :
-         mesh.active_cell_iterators_on_level(max_grid_level))
-      cell->clear_refine_flag();
-
-  for (const auto &cell :
-       mesh.active_cell_iterators_on_level(min_grid_level))
+  if (mesh.n_levels() > max_grid_level){
+    for (const auto &cell : mesh.active_cell_iterators_on_level(max_grid_level)){
+            cell->clear_refine_flag();
+    }
+  }
+    
+  for (const auto &cell : mesh.active_cell_iterators_on_level(min_grid_level)){
     cell->clear_coarsen_flag();
+  }
+   
   
   // Prepare solution transfer
   parallel::distributed::SolutionTransfer<dim, TrilinosWrappers::MPI::Vector> solution_transfer(dof_handler);
@@ -309,7 +308,7 @@ void AdaptiveHeat::refine_grid(const unsigned int min_grid_level,
 
   // Update ghosted vector
   solution = solution_owned;
-
+  return true;
 }
 
 void AdaptiveHeat::output() const
@@ -368,13 +367,7 @@ void AdaptiveHeat::run()
   double tol=1e-2;
   double dt_min = 1e-6;
   double dt_max = 1e-1;
-
-  // for spatial error 
-  double spatial_tol = 5e-3; // start point, we can refine 
-  int min_steps_between_refine = 5; // to not refine too often
-  int last_refine_step = 0; // when was the last refinement
     
-  
   std::cout<<"TOL = "<<tol<<std::endl;
 
   pcout << "===============================================" << std::endl;
@@ -438,16 +431,19 @@ void AdaptiveHeat::run()
             output();
         }
       
-      if (time < (T - (0.5 * delta_t)) && (timestep_number - last_refine_step) >= min_steps_between_refine)
+      if (time < T - 0.5 * delta_t && timestep_number - last_refine_step >= min_steps_between_refine)
       {
         pcout << "-----------------------------------------------" << std::endl;
         pcout << "Applying spatial error-driven refinement" << std::endl;
-        refine_grid(initial_global_refinement, initial_global_refinement + 2);
-        pcout << "-----------------------------------------------" << std::endl;
-
-        old_solution.reinit(solution_owned);
-        old_solution = solution_owned;
-        delta_t = 0.5 * delta_t;
+        
+        if(refine_grid(initial_global_refinement, initial_global_refinement + 2)){
+            last_refine_step = timestep_number;  // update last refinement 
+            pcout << "-----------------------------------------------" << std::endl;
+            old_solution.reinit(solution_owned);
+            old_solution = solution_owned;
+            delta_t = 0.5 * delta_t;
+          }
+        
       }
     }
 

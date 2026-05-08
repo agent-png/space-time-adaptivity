@@ -46,6 +46,7 @@
 #include <fstream>
 #include <iostream>
 #include <iomanip>
+#include <algorithm>
 
 using namespace dealii;
 
@@ -94,7 +95,7 @@ protected:
 	void solve_time_step();
 
 	// Apply adaptive mesh refinement
-	void refine_grid(const unsigned int, const unsigned int);
+	bool refine_grid(const unsigned int, const unsigned int);
 
 	// Output
 	void output() const;
@@ -116,6 +117,11 @@ protected:
 
 	// Current timestep number
 	unsigned int timestep_number = 0;
+
+	// For spatial refinement
+	double spatial_tol = 5.0e-4; // start point, we can refine 
+    unsigned int min_steps_between_refine = 5; // to not refine too often
+    unsigned int last_refine_step = 0; // when was the last refinement
 
 	// Diffusion coefficient
 	std::function<double(const Point<dim> &)> mu;
