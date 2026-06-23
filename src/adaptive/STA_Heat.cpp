@@ -133,49 +133,60 @@ void AdaptiveHeat::assemble()
       fe_values.get_function_values(solution, solution_old_values);
       fe_values.get_function_gradients(solution, solution_old_grads);
 
+      // cached values useful in the loop
+      const double inv_dt = 1.0 / delta_t;
+      const double one_minus_theta = 1.0 - theta;
+     
+
       for (unsigned int q = 0; q < n_q; ++q)
         {
-          const double mu_loc = mu(fe_values.quadrature_point(q));
+
+          const double JxW_q = fe_values.JxW(q);
+          const Point<dim> qp = fe_values.quadrature_point(q);
+
+          const double mu_loc = mu(qp);
 
           const double f_old_loc =
-            f(fe_values.quadrature_point(q), time - delta_t);
-          const double f_new_loc = f(fe_values.quadrature_point(q), time);
+            f(qp, time - delta_t);
+          const double f_new_loc = f(qp, time);
+
+          
 
           for (unsigned int i = 0; i < dofs_per_cell; ++i)
             {
               for (unsigned int j = 0; j < dofs_per_cell; ++j)
                 {
                   // Time derivative.
-                  cell_matrix(i, j) += (1.0 / delta_t) *             //
+                  cell_matrix(i, j) += (inv_dt) *             //
                                        fe_values.shape_value(i, q) * //
                                        fe_values.shape_value(j, q) * //
-                                       fe_values.JxW(q);
+                                       JxW_q;
 
                   // Diffusion.
                   cell_matrix(i, j) +=
                     theta * mu_loc *                             //
                     scalar_product(fe_values.shape_grad(i, q),   //
                                    fe_values.shape_grad(j, q)) * //
-                    fe_values.JxW(q);
+                    JxW_q;
                 }
 
               // Time derivative.
-              cell_rhs(i) += (1.0 / delta_t) *             //
+              cell_rhs(i) += (inv_dt) *             //
                              fe_values.shape_value(i, q) * //
                              solution_old_values[q] *      //
-                             fe_values.JxW(q);
+                             JxW_q;
 
               // Diffusion.
-              cell_rhs(i) -= (1.0 - theta) * mu_loc *                   //
+              cell_rhs(i) -= (one_minus_theta) * mu_loc *                   //
                              scalar_product(fe_values.shape_grad(i, q), //
                                             solution_old_grads[q]) *    //
-                             fe_values.JxW(q);
+                             JxW_q;
 
               // Forcing term.
               cell_rhs(i) +=
-                (theta * f_new_loc + (1.0 - theta) * f_old_loc) * //
+                (theta * f_new_loc + (one_minus_theta) * f_old_loc) * //
                 fe_values.shape_value(i, q) *                     //
-                fe_values.JxW(q);
+                JxW_q;
             }
         }
 
@@ -196,9 +207,9 @@ void AdaptiveHeat::assemble()
 
 void AdaptiveHeat::solve_time_step()
 {
-  TrilinosWrappers::PreconditionSSOR preconditioner;
-  preconditioner.initialize(
-    system_matrix, TrilinosWrappers::PreconditionSSOR::AdditionalData(1.0));
+
+  TrilinosWrappers::PreconditionAMG preconditioner; 
+  preconditioner.initialize(system_matrix); 
 
   //ReductionControl is a more flexible SolverControl extension
   ReductionControl solver_control(/* maxiter = */ 10000,
