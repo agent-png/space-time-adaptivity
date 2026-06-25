@@ -241,15 +241,22 @@ bool AdaptiveHeat::refine_grid(const unsigned int min_grid_level,
     estimated_error_per_cell);
   
   double eta_norm = estimated_error_per_cell.l2_norm();
-  pcout << "  Number of DoFs to refine = " << dof_handler.n_dofs()*0.25 << std::endl;
-  pcout << "  Number of DoFs to coarsen = " << dof_handler.n_dofs()*0.03 << std::endl;
-  pcout << "  Estimated error norm =  " <<std::scientific << eta_norm << std::endl;
+
+  double global_eta;
+  MPI_Allreduce(&eta_norm,
+              &global_eta,
+              1,
+              MPI_DOUBLE,
+              MPI_MAX,
+              MPI_COMM_WORLD);
   
-  if(eta_norm < spatial_tol){
+  pcout << "  Estimated global error norm =  " <<std::scientific << global_eta << std::endl << std::endl;
+
+  if(global_eta < spatial_tol){
     /* do not refine the grid */
-    pcout << "  Spatial error " << eta_norm 
+    pcout << "  Spatial error " << global_eta 
           << " < tolerance " << spatial_tol 
-          << " -> skip refinement.\n";
+          << " -> skip refinement." << std::endl << std::endl;
     return false; 
   } 
 
@@ -261,6 +268,9 @@ bool AdaptiveHeat::refine_grid(const unsigned int min_grid_level,
   // if error_ratio = 1.1, error is a little higher than tol → use lower refine_fraction
   const double refine_fraction  = std::clamp(0.10 * error_ratio, 0.05, 0.30); //refine_fraction = 0.10 * error_ratio, 0.05 is the min and 0.30 is the max
   const double coarsen_fraction = std::clamp(0.01 / error_ratio, 0.005, 0.03);
+
+  pcout << "  Number of DoFs to refine = " << dof_handler.n_dofs()*refine_fraction << std::endl;
+  pcout << "  Number of DoFs to coarsen = " << dof_handler.n_dofs()*coarsen_fraction << std::endl << std::endl;
 
   parallel::distributed::GridRefinement::refine_and_coarsen_fixed_fraction(
       mesh, 
@@ -376,10 +386,10 @@ void AdaptiveHeat::run()
 
   // for time error
   double tol=1e-2;
-  double dt_min = 1e-6;
+  double dt_min = 1e-4;
   double dt_max = 1e-1;
     
-  std::cout<<"TOL = "<<tol<<std::endl;
+  pcout <<"TOL = "<<tol<<std::endl;
 
   pcout << "===============================================" << std::endl;
 
@@ -400,14 +410,14 @@ void AdaptiveHeat::run()
       assemble();
       solve_time_step();
     
-      // Errore estimation
+      // Error estimation
       TrilinosWrappers::MPI::Vector diff = solution_owned;
       diff.add(-1.0, old_solution); 
 
       double delta_U = diff.linfty_norm();
       
-      pcout << " | Time Var Max: " << std::scientific << delta_U 
-            << " | dt: " << delta_t << std::endl;
+      pcout << " | max_delta_U = " << std::scientific << delta_U 
+            << " | dt = " << delta_t << std::endl;
 
       // danger for by 0 division
       double denom = std::max(delta_U, 1e-14);
@@ -417,7 +427,7 @@ void AdaptiveHeat::run()
       // Adaptive Rollback
         if (delta_U > tol) {
             //Rejected step
-            pcout << "Exceeded Tolerance (" << delta_U << "), Reducing Timestep..." << std::endl;
+            pcout << std::endl << "Exceeded Tolerance (" << tol << "), Reducing Timestep..." << std::endl << std::endl;
             time =t_old;
             
             delta_t = 0.9 * delta_t * factor;
@@ -452,7 +462,7 @@ void AdaptiveHeat::run()
             pcout << "-----------------------------------------------" << std::endl;
             old_solution.reinit(solution_owned);
             old_solution = solution_owned;
-            delta_t = 0.5 * delta_t;
+            //delta_t = 0.5 * delta_t;
           }
         
       }
