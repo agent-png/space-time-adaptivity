@@ -1,4 +1,10 @@
 #include "STA_Heat.hpp"
+//#define COMPARE_WITH_BASE
+
+#ifdef COMPARE_WITH_BASE
+#include "../homogeneous/H_Heat.hpp"
+#include <deal.II/numerics/fe_field_function.h>
+#endif
 
 int
 main(int argc, char *argv[])
@@ -23,6 +29,46 @@ main(int argc, char *argv[])
     return g(t)*h(p);
   };
 
+  
+#ifdef COMPARE_WITH_BASE
+  
+  if(Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD) > 1){
+    if(Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
+      std::cout << "Baseline comparing only runs with one process for simplicity." << std::endl
+      << "Either run with one process or disable comparing with baseline" << std::endl;
+    return 0;
+  }
+  std::unique_ptr<dealii::Functions::FEFieldFunction<dim>> baseline_function;
+  Heat baseline_heat(/*mesh_filename = */ "../mesh/mesh-cube-40.msh",
+                     /* degree = */ 1,
+                     /* T = */ 1.0,
+                     /* theta = */ 0.5,
+                     /* delta_t = */ 0.025, // use a small timestep 
+                     mu,
+                     f);
+
+  Vector<double> baseline_serial_solution;
+
+  std::cout << "Running solver for reference solution" << std::endl;
+
+  baseline_heat.run();
+
+  baseline_serial_solution.reinit(baseline_heat.get_dof_handler().n_dofs());
+  baseline_serial_solution = baseline_heat.get_serial_solution();
+  
+  MappingFE<dim> mapping(FE_SimplexP<dim>(1));
+  baseline_function = std::make_unique<dealii::Functions::FEFieldFunction<dim>> (
+    baseline_heat.get_dof_handler(), 
+    baseline_serial_solution,
+    mapping
+  );
+  baseline_function->set_time(1.0);
+
+
+  std::cout << "Reference solution computed, running adaptive solver." << std::endl << std::endl;
+
+#endif
+
   AdaptiveHeat problem(/* degree = */ 1,
                /* T = */ 1.0,
                /* theta = */ 0.5,
@@ -31,6 +77,22 @@ main(int argc, char *argv[])
                f);
 
   problem.run();
+
+
+#ifdef COMPARE_WITH_BASE
+
+  std::cout << std::endl << "Adaptive solution computed, computing L2 against baseline" << std::endl;
+
+  if(baseline_function){
+    double L2_err = 0;
+    if(Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0){
+      L2_err = problem.l2_against_base(*baseline_function);
+      std::cout << "L2_error = " << L2_err << std::endl;
+    }
+    MPI_Bcast(&L2_err, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  }
+
+#endif
 
   return 0;
 }

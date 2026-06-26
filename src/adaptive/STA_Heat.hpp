@@ -81,6 +81,9 @@ public:
 	// Run the simulation for the Heat problem
 	void run();
 
+	// Computer L2 error against a baseline solution
+	double l2_against_base(const Function<dim> &);
+
 protected:
 	// Initialize the mesh and the FE space
 	void setup();

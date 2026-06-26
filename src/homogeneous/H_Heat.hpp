@@ -88,6 +88,11 @@ public:
   void
   run();
 
+  // function needed for comparison with adaptive problem
+  Vector<double> get_serial_solution() const;
+
+  const DoFHandler<dim>& get_dof_handler() const;
+
 protected:
   // Initialization.
   void

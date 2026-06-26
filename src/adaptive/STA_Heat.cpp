@@ -449,7 +449,7 @@ void AdaptiveHeat::run()
 
             solution = solution_owned;
 
-            output();
+            //output();
         }
       
       if (time < T - 0.5 * delta_t && timestep_number - last_refine_step >= min_steps_between_refine)
@@ -468,4 +468,26 @@ void AdaptiveHeat::run()
       }
     }
 
+}
+
+double AdaptiveHeat::l2_against_base(const Function<dim> & baseline_function){
+  pcout << "Inside l2_against_base" << std::endl;
+
+  Vector<double> error_per_cell_L2(mesh.n_active_cells());
+
+  const QGauss<dim> quadrature_error(fe->degree + 2);
+
+  pcout << "Integrating difference" << std::endl;
+
+  VectorTools::integrate_difference(
+    dof_handler,
+    solution,
+    baseline_function,
+    error_per_cell_L2,
+    quadrature_error,
+    VectorTools::L2_norm);
+  
+  pcout << "Returning" << std::endl;
+
+  return error_per_cell_L2.l2_norm();
 }

@@ -269,6 +269,24 @@ Heat::run()
       // solution vector.
       solution = solution_owned;
 
-      output();
+      //output();
     }
+}
+
+const DoFHandler<Heat::dim> & 
+Heat::get_dof_handler() const
+{
+  return dof_handler;
+}
+
+Vector<double> 
+Heat::get_serial_solution() const
+{
+  Vector<double> serial;
+  serial.reinit(solution.size());
+  for(unsigned int i = 0; i < solution.size(); ++i)
+    {
+      serial(i) = solution(i);
+    }
+  return serial;
 }
