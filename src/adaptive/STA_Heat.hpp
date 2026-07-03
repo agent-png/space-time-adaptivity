@@ -48,6 +48,8 @@
 #include <iomanip>
 #include <algorithm>
 
+#include "../timing/Timing.hpp"
+
 using namespace dealii;
 
 /**
@@ -83,6 +85,8 @@ public:
 
 	// Computer L2 error against a baseline solution
 	double l2_against_base(const Function<dim> &);
+
+	void print_results();
 
 protected:
 	// Initialize the mesh and the FE space
@@ -137,6 +141,13 @@ protected:
 
 	// Rank of the current MPI process
 	const unsigned int mpi_rank;
+
+	// Number of steps
+	unsigned int num_of_steps = 0;
+	unsigned int max_dofs = 0;
+
+	// Collect data about execution
+	Profiler profiler;
 
 	// Note: deal.II tutorial uses parallel::distributed::Triangulation.
 	// fullydistributed is newer and more scalable (does not replicate coarse mesh

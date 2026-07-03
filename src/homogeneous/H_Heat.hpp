@@ -9,18 +9,23 @@
 #include <deal.II/base/quadrature_lib.h>
 
 #include <deal.II/distributed/fully_distributed_tria.h>
+#include <deal.II/distributed/tria.h> //
+#include <deal.II/distributed/grid_refinement.h>
+#include <deal.II/distributed/solution_transfer.h>
 
 #include <deal.II/dofs/dof_handler.h>
 #include <deal.II/dofs/dof_tools.h>
 
 #include <deal.II/fe/fe_simplex_p.h>
 #include <deal.II/fe/fe_values.h>
+#include <deal.II/fe/fe_q.h>
 #include <deal.II/fe/mapping_fe.h>
 
 #include <deal.II/grid/grid_generator.h>
 #include <deal.II/grid/grid_in.h>
 #include <deal.II/grid/grid_tools.h>
 #include <deal.II/grid/tria.h>
+
 
 #include <deal.II/lac/solver_cg.h>
 #include <deal.II/lac/solver_gmres.h>
@@ -35,6 +40,9 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+
+
+#include "../timing/Timing.hpp"
 
 using namespace dealii;
 
@@ -93,6 +101,8 @@ public:
 
   const DoFHandler<dim>& get_dof_handler() const;
 
+  void print_results();
+
 protected:
   // Initialization.
   void
@@ -143,14 +153,20 @@ protected:
   // Rank of the current MPI process.
   const unsigned int mpi_rank;
 
+  // Number of steps
+  unsigned int num_of_steps = 0;
+
+  // Collect data about execution
+  Profiler profiler;
+
   // Triangulation.
-  parallel::fullydistributed::Triangulation<dim> mesh;
+  parallel::distributed::Triangulation<dim> mesh;
 
   // Finite element space.
-  std::unique_ptr<FiniteElement<dim>> fe;
+  std::unique_ptr<FE_Q<dim>> fe;
 
   // Quadrature formula.
-  std::unique_ptr<Quadrature<dim>> quadrature;
+  std::unique_ptr<QGauss<dim>> quadrature;
 
   // DoF handler.
   DoFHandler<dim> dof_handler;

@@ -9,28 +9,11 @@ Heat::setup()
   {
     pcout << "Initializing the mesh" << std::endl;
 
-    // Read serial mesh.
-    Triangulation<dim> mesh_serial;
+    GridGenerator::hyper_cube(mesh);
+    //refining level
+    mesh.refine_global(5);
 
-    {
-      GridIn<dim> grid_in;
-      grid_in.attach_triangulation(mesh_serial);
-
-      std::ifstream mesh_file(mesh_file_name);
-      grid_in.read_msh(mesh_file);
-    }
-
-    // Copy the serial mesh into the parallel one.
-    {
-      GridTools::partition_triangulation(mpi_size, mesh_serial);
-
-      const auto construction_data = TriangulationDescription::Utilities::
-        create_description_from_triangulation(mesh_serial, MPI_COMM_WORLD);
-      mesh.create_triangulation(construction_data);
-    }
-
-    pcout << "  Number of elements = " << mesh.n_global_active_cells()
-          << std::endl;
+    pcout << "  Number of elements = " << mesh.n_global_active_cells() << std::endl;
   }
 
   pcout << "-----------------------------------------------" << std::endl;
@@ -39,13 +22,13 @@ Heat::setup()
   {
     pcout << "Initializing the finite element space" << std::endl;
 
-    fe = std::make_unique<FE_SimplexP<dim>>(r);
+    fe = std::make_unique<FE_Q<dim>>(r);
 
     pcout << "  Degree                     = " << fe->degree << std::endl;
     pcout << "  DoFs per cell              = " << fe->dofs_per_cell
           << std::endl;
 
-    quadrature = std::make_unique<QGaussSimplex<dim>>(r + 1);
+    quadrature = std::make_unique<QGauss<dim>>(r + 1);
 
     pcout << "  Quadrature points per cell = " << quadrature->size()
           << std::endl;
@@ -238,7 +221,9 @@ Heat::run()
 {
   // Setup initial conditions.
   {
+    profiler.tic("setup");
     setup();
+    profiler.toc("setup");
 
     VectorTools::interpolate(dof_handler, FunctionU0(), solution_owned);
     solution = solution_owned;
@@ -255,6 +240,8 @@ Heat::run()
   // Time-stepping loop.
   while (time < T - 0.5 * delta_t)
     {
+      num_of_steps++;
+
       time += delta_t;
       ++timestep_number;
 
@@ -262,14 +249,23 @@ Heat::run()
             << ", time = " << std::setw(4) << std::fixed << std::setprecision(2)
             << time << " : ";
 
+      profiler.tic("assemble");
       assemble();
+      profiler.toc("assemble");
+
+      profiler.tic("solve");
       solve_linear_system();
+      profiler.toc("solve");
 
       // Perform parallel communication to update the ghost values of the
       // solution vector.
+      profiler.tic("update-ghost");
       solution = solution_owned;
+      profiler.toc("update-ghost");
 
-      //output();
+      profiler.tic("output");
+      output();
+      profiler.toc("output");
     }
 }
 
@@ -289,4 +285,12 @@ Heat::get_serial_solution() const
       serial(i) = solution(i);
     }
   return serial;
+}
+
+void Heat::print_results(){
+  pcout << "Baseline Results" << std::endl;
+  pcout << "Number of steps: " << num_of_steps << std::endl 
+        << "Elapsed Time: " << std::endl;
+        profiler.report();
+  pcout << "Number of DoFs: " << dof_handler.n_dofs() << std::endl;
 }

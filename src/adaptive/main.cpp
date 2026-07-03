@@ -4,6 +4,7 @@
 #ifdef COMPARE_WITH_BASE
 #include "../homogeneous/H_Heat.hpp"
 #include <deal.II/numerics/fe_field_function.h>
+#include <deal.II/fe/mapping_q1.h> 
 #endif
 
 int
@@ -52,11 +53,12 @@ main(int argc, char *argv[])
   std::cout << "Running solver for reference solution" << std::endl;
 
   baseline_heat.run();
-
+  
   baseline_serial_solution.reinit(baseline_heat.get_dof_handler().n_dofs());
   baseline_serial_solution = baseline_heat.get_serial_solution();
   
-  MappingFE<dim> mapping(FE_SimplexP<dim>(1));
+  MappingQ1<dim> mapping;
+  //MappingFE<dim> mapping(MappingQ1<dim>(1));
   baseline_function = std::make_unique<dealii::Functions::FEFieldFunction<dim>> (
     baseline_heat.get_dof_handler(), 
     baseline_serial_solution,
@@ -81,10 +83,14 @@ main(int argc, char *argv[])
 
 #ifdef COMPARE_WITH_BASE
 
-  std::cout << std::endl << "Adaptive solution computed, computing L2 against baseline" << std::endl;
+  std::cout << std::endl << "\nAdaptive solution computed\n" << std::endl;
 
   if(baseline_function){
+    baseline_heat.print_results();
+    problem.print_results();
+
     double L2_err = 0;
+
     if(Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0){
       L2_err = problem.l2_against_base(*baseline_function);
       std::cout << "L2_error = " << L2_err << std::endl;

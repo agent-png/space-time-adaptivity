@@ -47,6 +47,7 @@ void AdaptiveHeat::setup_system(){
     dof_handler.reinit(mesh);
     dof_handler.distribute_dofs(*fe);
 
+    max_dofs = std::max(max_dofs, dof_handler.n_dofs());
     pcout << "  Number of DoFs = " << dof_handler.n_dofs() << std::endl;
     pcout << "  N_levels = " << mesh.n_levels() << std::endl;
   }
@@ -367,7 +368,9 @@ void AdaptiveHeat::run()
 
   // Setup initial conditions.
   {
+    profiler.tic("setup");
     setup();
+    profiler.toc("setup");
 
     VectorTools::interpolate(dof_handler, Functions::ZeroFunction<dim>(), solution_owned);
     solution = solution_owned;
@@ -396,8 +399,12 @@ void AdaptiveHeat::run()
   // Time-stepping loop.
   while (time < T - 0.5 * delta_t)
     {
+      num_of_steps++;
+
+      profiler.tic("update-ghost");
       //Saving previous solution for error estimation
       old_solution = solution_owned;
+      profiler.toc("update-ghost");
       
       pcout << "Timestep " << std::setw(3) << timestep_number
             << ", time = " << std::setw(4) << std::fixed << std::setprecision(2)
@@ -407,9 +414,15 @@ void AdaptiveHeat::run()
       double  t_attempt = time + delta_t;
       time = t_attempt; 
 
+      profiler.tic("assemble");
       assemble();
+      profiler.toc("assemble");
+
+      profiler.tic("solve");
       solve_time_step();
+      profiler.toc("solve");
     
+      profiler.tic("time-adap");
       // Error estimation
       TrilinosWrappers::MPI::Vector diff = solution_owned;
       diff.add(-1.0, old_solution); 
@@ -447,23 +460,33 @@ void AdaptiveHeat::run()
             //Delta_t clamp
             delta_t = std::max(dt_min, std::min(delta_t, dt_max));
 
+            profiler.tic("update-ghost");
             solution = solution_owned;
+            profiler.toc("update-ghost");
 
-            //output();
+            profiler.tic("output");
+            output();
+            profiler.toc("output");
         }
+      profiler.toc("time-adap");
       
       if (time < T - 0.5 * delta_t && timestep_number - last_refine_step >= min_steps_between_refine)
       {
         pcout << "-----------------------------------------------" << std::endl;
         pcout << "Applying spatial error-driven refinement" << std::endl;
         
+        profiler.tic("refine");
         if(refine_grid(initial_global_refinement, initial_global_refinement + 2)){
             last_refine_step = timestep_number;  // update last refinement 
             pcout << "-----------------------------------------------" << std::endl;
             old_solution.reinit(solution_owned);
+
+            profiler.tic("update-ghost");
             old_solution = solution_owned;
+            profiler.toc("update-ghost");
             //delta_t = 0.5 * delta_t;
           }
+        profiler.toc("refine");
         
       }
     }
@@ -471,13 +494,11 @@ void AdaptiveHeat::run()
 }
 
 double AdaptiveHeat::l2_against_base(const Function<dim> & baseline_function){
-  pcout << "Inside l2_against_base" << std::endl;
+  pcout << "\nComputing L2 against baseline" << std::endl;
 
   Vector<double> error_per_cell_L2(mesh.n_active_cells());
 
   const QGauss<dim> quadrature_error(fe->degree + 2);
-
-  pcout << "Integrating difference" << std::endl;
 
   VectorTools::integrate_difference(
     dof_handler,
@@ -487,7 +508,13 @@ double AdaptiveHeat::l2_against_base(const Function<dim> & baseline_function){
     quadrature_error,
     VectorTools::L2_norm);
   
-  pcout << "Returning" << std::endl;
-
   return error_per_cell_L2.l2_norm();
+}
+
+void AdaptiveHeat::print_results(){
+  pcout << "\nAdaptivity Results" << std::endl;
+  pcout << "Number of steps: " << num_of_steps << std::endl 
+        << "Elapsed Time: " << std::endl;
+        profiler.report();
+  pcout << "Max number of DoFs: " << max_dofs << std::endl;
 }
