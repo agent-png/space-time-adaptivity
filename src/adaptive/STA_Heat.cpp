@@ -515,6 +515,6 @@ void AdaptiveHeat::print_results(){
   pcout << "\nAdaptivity Results" << std::endl;
   pcout << "Number of steps: " << num_of_steps << std::endl 
         << "Elapsed Time: " << std::endl;
-        profiler.report();
+        profiler.report(MPI_COMM_WORLD);
   pcout << "Max number of DoFs: " << max_dofs << std::endl;
 }

@@ -34,7 +34,7 @@ class Profiler {
 public:
     void tic(const std::string& name);
     void toc(const std::string& name);
-    void report();
+    void report(MPI_Comm) const;
 
 private:
     std::unordered_map<std::string, Timer> timers;

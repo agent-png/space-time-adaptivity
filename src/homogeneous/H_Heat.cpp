@@ -291,6 +291,6 @@ void Heat::print_results(){
   pcout << "Baseline Results" << std::endl;
   pcout << "Number of steps: " << num_of_steps << std::endl 
         << "Elapsed Time: " << std::endl;
-        profiler.report();
+        profiler.report(MPI_COMM_WORLD);
   pcout << "Number of DoFs: " << dof_handler.n_dofs() << std::endl;
 }
