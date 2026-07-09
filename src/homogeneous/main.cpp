@@ -24,7 +24,7 @@ main(int argc, char *argv[])
     return g(t)*h(p);
   };
 
-  Heat problem(/*mesh_filename = */ "../mesh/mesh-cube-20.msh",
+  Heat problem(/*ouput_filename = */ "homogeneus.msh",
                /* degree = */ 1,
                /* T = */ 1.0,
                /* theta = */ 0.5,

@@ -72,14 +72,14 @@ public:
   };
 
   // Constructor.
-  Heat(const std::string                               &mesh_file_name_,
+  Heat(const std::string                               &output_file_name_,
        const unsigned int                              &r_,
        const double                                    &T_,
        const double                                    &theta_,
        const double                                    &delta_t_,
        const std::function<double(const Point<dim> &)> &mu_,
        const std::function<double(const Point<dim> &, const double &)> &f_)
-    : mesh_file_name(mesh_file_name_)
+    : output_file_name(output_file_name_)
     , r(r_)
     , T(T_)
     , theta(theta_)
@@ -121,7 +121,7 @@ protected:
   output() const;
 
   // Name of the mesh.
-  const std::string mesh_file_name;
+  const std::string output_file_name;
 
   // Polynomial degree.
   const unsigned int r;

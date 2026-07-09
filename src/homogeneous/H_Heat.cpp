@@ -207,7 +207,7 @@ Heat::output() const
 
   data_out.build_patches();
 
-  const std::filesystem::path mesh_path(mesh_file_name);
+  const std::filesystem::path mesh_path(output_file_name);
   const std::string output_file_name = "output-" + mesh_path.stem().string();
 
   data_out.write_vtu_with_pvtu_record(/* folder = */ "./",

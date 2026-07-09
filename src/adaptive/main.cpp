@@ -40,7 +40,7 @@ main(int argc, char *argv[])
     return 0;
   }
   std::unique_ptr<dealii::Functions::FEFieldFunction<dim>> baseline_function;
-  Heat baseline_heat(/*mesh_filename = */ "../mesh/mesh-cube-40.msh",
+  Heat baseline_heat(/*output_filename = */ "homogeneous.msh",
                      /* degree = */ 1,
                      /* T = */ 1.0,
                      /* theta = */ 0.5,
