@@ -43,7 +43,7 @@ void Profiler::report(MPI_Comm comm) const
 
         // Reduce TOTAL
         MPI_Reduce(&local.total, &global.total, 1,
-                   MPI_DOUBLE, MPI_SUM, 0, comm);
+                   MPI_DOUBLE, MPI_MAX, 0, comm);
 
         // Reduce CALLS
         MPI_Reduce(&local.calls, &global.calls, 1,
