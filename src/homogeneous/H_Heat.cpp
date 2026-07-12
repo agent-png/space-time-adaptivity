@@ -3,69 +3,48 @@
 void
 Heat::setup()
 {
-  pcout << "===============================================" << std::endl;
 
   // Create the mesh.
   {
-    pcout << "Initializing the mesh" << std::endl;
 
     GridGenerator::hyper_cube(mesh);
     //refining level
     mesh.refine_global(5);
 
-    pcout << "  Number of elements = " << mesh.n_global_active_cells() << std::endl;
   }
 
-  pcout << "-----------------------------------------------" << std::endl;
 
   // Initialize the finite element space.
   {
-    pcout << "Initializing the finite element space" << std::endl;
 
     fe = std::make_unique<FE_Q<dim>>(r);
 
-    pcout << "  Degree                     = " << fe->degree << std::endl;
-    pcout << "  DoFs per cell              = " << fe->dofs_per_cell
-          << std::endl;
-
     quadrature = std::make_unique<QGauss<dim>>(r + 1);
 
-    pcout << "  Quadrature points per cell = " << quadrature->size()
-          << std::endl;
   }
 
-  pcout << "-----------------------------------------------" << std::endl;
 
   // Initialize the DoF handler.
   {
-    pcout << "Initializing the DoF handler" << std::endl;
 
     dof_handler.reinit(mesh);
     dof_handler.distribute_dofs(*fe);
 
-    pcout << "  Number of DoFs = " << dof_handler.n_dofs() << std::endl;
   }
-
-  pcout << "-----------------------------------------------" << std::endl;
 
   // Initialize the linear system.
   {
-    pcout << "Initializing the linear system" << std::endl;
-
     const IndexSet locally_owned_dofs = dof_handler.locally_owned_dofs();
     const IndexSet locally_relevant_dofs =
       DoFTools::extract_locally_relevant_dofs(dof_handler);
 
-    pcout << "  Initializing the sparsity pattern" << std::endl;
     TrilinosWrappers::SparsityPattern sparsity(locally_owned_dofs,
                                                MPI_COMM_WORLD);
     DoFTools::make_sparsity_pattern(dof_handler, sparsity);
     sparsity.compress();
 
-    pcout << "  Initializing the system matrix" << std::endl;
     system_matrix.reinit(sparsity);
 
-    pcout << "  Initializing vectors" << std::endl;
     system_rhs.reinit(locally_owned_dofs, MPI_COMM_WORLD);
     solution_owned.reinit(locally_owned_dofs, MPI_COMM_WORLD);
     solution.reinit(locally_owned_dofs, locally_relevant_dofs, MPI_COMM_WORLD);
@@ -189,7 +168,6 @@ Heat::solve_linear_system()
   SolverCG<TrilinosWrappers::MPI::Vector> solver(solver_control);
 
   solver.solve(system_matrix, solution_owned, system_rhs, preconditioner);
-  pcout << solver_control.last_step() << " CG iterations" << std::endl;
 }
 
 void
@@ -235,8 +213,6 @@ Heat::run()
     output();
   }
 
-  pcout << "===============================================" << std::endl;
-
   // Time-stepping loop.
   while (time < T - 0.5 * delta_t)
     {
@@ -245,9 +221,6 @@ Heat::run()
       time += delta_t;
       ++timestep_number;
 
-      pcout << "Timestep " << std::setw(3) << timestep_number
-            << ", time = " << std::setw(4) << std::fixed << std::setprecision(2)
-            << time << " : ";
 
       profiler.tic("assemble");
       assemble();

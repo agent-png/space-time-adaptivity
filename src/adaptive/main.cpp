@@ -50,24 +50,18 @@ main(int argc, char *argv[])
 
   Vector<double> baseline_serial_solution;
 
-  std::cout << "Running solver for reference solution" << std::endl;
-
   baseline_heat.run();
   
   baseline_serial_solution.reinit(baseline_heat.get_dof_handler().n_dofs());
   baseline_serial_solution = baseline_heat.get_serial_solution();
   
   MappingQ1<dim> mapping;
-  //MappingFE<dim> mapping(MappingQ1<dim>(1));
   baseline_function = std::make_unique<dealii::Functions::FEFieldFunction<dim>> (
     baseline_heat.get_dof_handler(), 
     baseline_serial_solution,
     mapping
   );
   baseline_function->set_time(1.0);
-
-
-  std::cout << "Reference solution computed, running adaptive solver." << std::endl << std::endl;
 
 #endif
 
@@ -83,8 +77,6 @@ main(int argc, char *argv[])
 
 #ifdef COMPARE_WITH_BASE
 
-  std::cout << std::endl << "\nAdaptive solution computed\n" << std::endl;
-
   if(baseline_function){
     baseline_heat.print_results();
     problem.print_results();
@@ -93,7 +85,6 @@ main(int argc, char *argv[])
 
     if(Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0){
       L2_err = problem.l2_against_base(*baseline_function);
-      std::cout << "L2_error = " << L2_err << std::endl;
     }
     MPI_Bcast(&L2_err, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   }

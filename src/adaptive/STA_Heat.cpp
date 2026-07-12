@@ -2,39 +2,24 @@
 
 void AdaptiveHeat::setup()
 {
-  pcout << "===============================================" << std::endl;
 
   // Create the initial mesh
   {
-    pcout << "Initializing the mesh" << std::endl;
 
     GridGenerator::hyper_cube(mesh);
     //refining level
     mesh.refine_global(5);
 
-    pcout << "  Number of elements = " << mesh.n_global_active_cells() << std::endl;
-
   }
 
-  pcout << "-----------------------------------------------" << std::endl;
 
   // Initialize the finite element space.
   {
-    pcout << "Initializing the finite element space" << std::endl;
-
     fe = std::make_unique<FE_Q<dim>>(r);
-
-    pcout << "  Degree                     = " << fe->degree << std::endl;
-    pcout << "  DoFs per cell              = " << fe->dofs_per_cell
-          << std::endl;
 
     quadrature = std::make_unique<QGauss<dim>>(r + 1);
 
-    pcout << "  Quadrature points per cell = " << quadrature->size()
-          << std::endl;
   }
-
-  pcout << "-----------------------------------------------" << std::endl;
   
   setup_system();
 }
@@ -42,21 +27,15 @@ void AdaptiveHeat::setup()
 void AdaptiveHeat::setup_system(){
   // Initialize the DoF handler.
   {
-    pcout << "Initializing the DoF handler" << std::endl;
 
     dof_handler.reinit(mesh);
     dof_handler.distribute_dofs(*fe);
 
     max_dofs = std::max(max_dofs, dof_handler.n_dofs());
-    pcout << "  Number of DoFs = " << dof_handler.n_dofs() << std::endl;
-    pcout << "  N_levels = " << mesh.n_levels() << std::endl;
   }
-
-  pcout << "-----------------------------------------------" << std::endl;
 
   // Initialize the linear system.
   {
-    pcout << "Initializing the linear system" << std::endl;
 
     const IndexSet locally_owned_dofs = dof_handler.locally_owned_dofs();
     const IndexSet locally_relevant_dofs = DoFTools::extract_locally_relevant_dofs(dof_handler);
@@ -67,7 +46,6 @@ void AdaptiveHeat::setup_system(){
     DoFTools::make_hanging_node_constraints(dof_handler, constraints);
     constraints.close();
 
-    pcout << "  Initializing the sparsity pattern" << std::endl;
     // deal.II tutorial 40 also uses SparsityTools::distribute_sparsity_pattern()
     // but TrilinosWrappers::SparsityPattern already creates a parallel sparsity pattern
     TrilinosWrappers::SparsityPattern sparsity(locally_owned_dofs,
@@ -80,10 +58,8 @@ void AdaptiveHeat::setup_system(){
                                     /*keep_constrained_dofs=*/false); 
     sparsity.compress();
 
-    pcout << "  Initializing the system matrix" << std::endl;
     system_matrix.reinit(sparsity);
 
-    pcout << "  Initializing vectors" << std::endl;
     system_rhs.reinit(locally_owned_dofs, MPI_COMM_WORLD);
     solution_owned.reinit(locally_owned_dofs, MPI_COMM_WORLD);
     solution.reinit(locally_owned_dofs, locally_relevant_dofs, MPI_COMM_WORLD);
@@ -222,9 +198,7 @@ void AdaptiveHeat::solve_time_step()
   solution_owned.reinit(dof_handler.locally_owned_dofs(), MPI_COMM_WORLD);
 
   solver.solve(system_matrix, solution_owned, system_rhs, preconditioner);
-  pcout << solver_control.last_step() << " CG iterations" << std::endl;
 
-  // 
   constraints.distribute(solution_owned);
   
 }
@@ -251,13 +225,10 @@ bool AdaptiveHeat::refine_grid(const unsigned int min_grid_level,
               MPI_MAX,
               MPI_COMM_WORLD);
   
-  pcout << "  Estimated global error norm =  " <<std::scientific << global_eta << std::endl << std::endl;
+              
 
   if(global_eta < spatial_tol){
     /* do not refine the grid */
-    pcout << "  Spatial error " << global_eta 
-          << " < tolerance " << spatial_tol 
-          << " -> skip refinement." << std::endl << std::endl;
     return false; 
   } 
 
@@ -270,8 +241,6 @@ bool AdaptiveHeat::refine_grid(const unsigned int min_grid_level,
   const double refine_fraction  = std::clamp(0.10 * error_ratio, 0.05, 0.30); //refine_fraction = 0.10 * error_ratio, 0.05 is the min and 0.30 is the max
   const double coarsen_fraction = std::clamp(0.01 / error_ratio, 0.005, 0.03);
 
-  pcout << "  Number of DoFs to refine = " << dof_handler.n_dofs()*refine_fraction << std::endl;
-  pcout << "  Number of DoFs to coarsen = " << dof_handler.n_dofs()*coarsen_fraction << std::endl << std::endl;
 
   parallel::distributed::GridRefinement::refine_and_coarsen_fixed_fraction(
       mesh, 
@@ -353,10 +322,6 @@ void AdaptiveHeat::output() const
                                       /* basename = */ output_file_name,
                                       /* index = */ timestep_number,
                                       MPI_COMM_WORLD);
-  pcout << "Output written to " << output_file_name << std::endl;
-  pcout << "===============================================" << std::endl;
- 
-
 }
 
 void AdaptiveHeat::run()
@@ -391,10 +356,7 @@ void AdaptiveHeat::run()
   double tol=1e-2;
   double dt_min = 1e-4;
   double dt_max = 1e-1;
-    
-  pcout <<"TOL = "<<tol<<std::endl;
-
-  pcout << "===============================================" << std::endl;
+  
 
   // Time-stepping loop.
   while (time < T - 0.5 * delta_t)
@@ -406,9 +368,6 @@ void AdaptiveHeat::run()
       old_solution = solution_owned;
       profiler.toc("update-ghost");
       
-      pcout << "Timestep " << std::setw(3) << timestep_number
-            << ", time = " << std::setw(4) << std::fixed << std::setprecision(2)
-            << time << " : ";
 
       double t_old = time;
       double  t_attempt = time + delta_t;
@@ -429,8 +388,6 @@ void AdaptiveHeat::run()
 
       double delta_U = diff.linfty_norm();
       
-      pcout << " | max_delta_U = " << std::scientific << delta_U 
-            << " | dt = " << delta_t << std::endl;
 
       // danger for by 0 division
       double denom = std::max(delta_U, 1e-14);
@@ -440,7 +397,6 @@ void AdaptiveHeat::run()
       // Adaptive Rollback
         if (delta_U > tol) {
             //Rejected step
-            pcout << std::endl << "Exceeded Tolerance (" << tol << "), Reducing Timestep..." << std::endl << std::endl;
             time =t_old;
             
             delta_t = 0.9 * delta_t * factor;
@@ -472,13 +428,10 @@ void AdaptiveHeat::run()
       
       if (time < T - 0.5 * delta_t && timestep_number - last_refine_step >= min_steps_between_refine)
       {
-        pcout << "-----------------------------------------------" << std::endl;
-        pcout << "Applying spatial error-driven refinement" << std::endl;
         
         profiler.tic("refine");
         if(refine_grid(initial_global_refinement, initial_global_refinement + 2)){
             last_refine_step = timestep_number;  // update last refinement 
-            pcout << "-----------------------------------------------" << std::endl;
             old_solution.reinit(solution_owned);
 
             profiler.tic("update-ghost");
@@ -494,7 +447,6 @@ void AdaptiveHeat::run()
 }
 
 double AdaptiveHeat::l2_against_base(const Function<dim> & baseline_function){
-  pcout << "\nComputing L2 against baseline" << std::endl;
 
   Vector<double> error_per_cell_L2(mesh.n_active_cells());
 
